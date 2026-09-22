@@ -14,32 +14,78 @@ export default function InputWizard() {
     // --- HOISTED STATE (Shared across steps) ---
     const [productCategory, setProductCategory] = useState("");
     const [isAiEnabled, setIsAiEnabled] = useState(true);
+    const [storageTemp, setStorageTemp] = useState("Ambient");
 
     // Logic to determine if the selected category is typically a liquid
     const isLiquid = productCategory.toLowerCase().includes("beverage") ||
         productCategory.toLowerCase().includes("dairy") ||
         productCategory.toLowerCase().includes("oil");
+
+    // NEW: Technical Spec States
+    const [moisture, setMoisture] = useState(10.0);
+    const [lipid, setLipid] = useState("Low (<5%)");
+    const [ph, setPh] = useState(7.0);
+    const [fillingProcess, setFillingProcess] = useState("Standard Ambient Fill");
+
+    // NEW: Auto-fill technical specs when AI is enabled and category changes
+    React.useEffect(() => {
+        if (!isAiEnabled) return;
+
+        const cat = productCategory.toLowerCase();
+
+        if (cat.includes("dairy") || cat.includes("milk") || cat.includes("ice")) {
+            setMoisture(85.0); setLipid("Medium (5-20%)"); setPh(6.7); setFillingProcess("Aseptic / Cold Fill");
+        } else if (cat.includes("beverage") || cat.includes("juice")) {
+            setMoisture(90.0); setLipid("Low (<5%)"); setPh(3.5); setFillingProcess("Hot Fill (Up to 85°C)");
+        } else if (cat.includes("nut") || cat.includes("seed") || cat.includes("fats")) {
+            setMoisture(2.0); setLipid("High (>20%) - Requires O2 Barrier"); setPh(7.0); setFillingProcess("N/A - Solid product");
+        } else if (cat.includes("fruit") || cat.includes("vegetable") || cat.includes("potato")) {
+            setMoisture(75.0); setLipid("Low (<5%)"); setPh(5.5); setFillingProcess("N/A - Solid product");
+        } else if (cat.includes("bakery") || cat.includes("cereal") || cat.includes("savoury")) {
+            setMoisture(5.0); setLipid("Medium (5-20%)"); setPh(6.0); setFillingProcess("N/A - Solid product");
+        } else {
+            // Default reset
+            setMoisture(10.0); setLipid("Low (<5%)"); setPh(7.0); setFillingProcess("Standard Ambient Fill");
+        }
+    }, [productCategory, isAiEnabled]);
+
     const handleRunAnalysis = async () => {
+        // 1. Check for token before allowing the request
+        const token = localStorage.getItem("access_token");
+        if (!token) {
+            alert("Security Lock: Please log in to run AI analysis.");
+            navigate('/login'); // Sends them to the login page
+            return;
+        }
+
         try {
-            // Send data to our new Python FastAPI backend
             const response = await fetch('http://127.0.0.1:8000/api/analyze', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}` // 2. Send the VIP pass!
+                },
                 body: JSON.stringify({
                     product_name: "User Product",
                     fssai_category: productCategory || "Unknown",
                     shelf_life_days: 90,
                     is_liquid: isLiquid,
-                    moisture_content: 3.5,
-                    lipid_content: "Low",
-                    ph_level: 3.8,
-                    filling_process: "Aseptic / Cold Fill"
+                    moisture_content: Number(moisture),
+                    lipid_content: lipid.split(" ")[0],
+                    ph_level: isLiquid ? Number(ph) : null,
+                    filling_process: isLiquid ? fillingProcess : "None"
                 })
             });
 
+            if (response.status === 401) {
+                alert("Session expired. Please log in again.");
+                localStorage.removeItem("access_token");
+                navigate('/login');
+                return;
+            }
+
             const result = await response.json();
 
-            // Navigate to the results page and pass the API data along
             if (result.status === "success") {
                 navigate('/results', { state: { apiData: result.data } });
             }
@@ -49,115 +95,131 @@ export default function InputWizard() {
         }
     };
 
-    return (
-        <div className="flex flex-col min-h-screen bg-slate-50 font-sans">
-            <Navbar />
+    const result = await response.json();
 
-            {/* Main Content Split Area */}
-            <div className="flex flex-1 h-[calc(100vh-80px)] overflow-hidden">
+    // Navigate to the results page and pass the API data along
+    if (result.status === "success") {
+        navigate('/results', { state: { apiData: result.data } });
+    }
+} catch (error) {
+    console.error("Failed to connect to AI Engine:", error);
+    alert("Ensure your FastAPI server is running on port 8000!");
+}
+    };
 
-                {/* LEFT SIDEBAR - Increased Width and Full Height */}
-                <div className="hidden lg:flex flex-col w-96 bg-slate-900 text-white p-10 shadow-2xl z-10 overflow-y-auto">
-                    <div className="flex items-center gap-4 mb-16">
-                        <div className="p-2.5 bg-indigo-500 rounded-xl shadow-lg">
-                            <Factory className="w-7 h-7 text-white" />
-                        </div>
-                        <h1 className="text-2xl font-extrabold tracking-tight">PackGenius AI</h1>
+return (
+    <div className="flex flex-col min-h-screen bg-slate-50 font-sans">
+        <Navbar />
+
+        {/* Main Content Split Area */}
+        <div className="flex flex-1 h-[calc(100vh-80px)] overflow-hidden">
+
+            {/* LEFT SIDEBAR - Increased Width and Full Height */}
+            <div className="hidden lg:flex flex-col w-96 bg-slate-900 text-white p-10 shadow-2xl z-10 overflow-y-auto">
+                <div className="flex items-center gap-4 mb-16">
+                    <div className="p-2.5 bg-indigo-500 rounded-xl shadow-lg">
+                        <Factory className="w-7 h-7 text-white" />
                     </div>
-
-                    <div className="space-y-10 flex-1 relative">
-                        <StepIndicator
-                            num={1} title="Product Profile" desc="Basic food characteristics"
-                            active={activeSection === 1} icon={<Box size={20} />}
-                        />
-                        <StepIndicator
-                            num={2} title="Technical Specs" desc="Moisture, pH & chemistry"
-                            active={activeSection === 2} icon={<TestTubes size={20} />}
-                        />
-                        <StepIndicator
-                            num={3} title="Supply Chain" desc="Storage & transit environment"
-                            active={activeSection === 3} icon={<ThermometerSnowflake size={20} />}
-                        />
-                    </div>
-
-                    <div className="mt-auto pt-8 border-t border-slate-700/50">
-                        <div className="flex items-center gap-3 text-slate-400 text-sm">
-                            <Bot size={18} className="text-indigo-400" />
-                            <span>AI Engine Status: <span className="text-emerald-400 font-medium">Ready</span></span>
-                        </div>
-                    </div>
+                    <h1 className="text-2xl font-extrabold tracking-tight">PackGenius AI</h1>
                 </div>
 
-                {/* RIGHT CONTENT - Continuous Scroll Form */}
-                <div className="flex-1 flex flex-col h-full overflow-y-auto scroll-smooth pb-24">
-                    <div className="max-w-4xl w-full mx-auto p-8 md:p-12 lg:p-16">
-
-                        <div className="mb-10">
-                            <h2 className="text-3xl font-extrabold text-slate-900">
-                                Configure Packaging Parameters
-                            </h2>
-                            <p className="text-base text-slate-500 mt-2">Provide the details below to generate your FSSAI-compliant material specs.</p>
-                        </div>
-
-                        {/* Form Containers - Stacked Vertically */}
-                        <div className="space-y-8">
-
-                            {/* Section 1: Product Profile */}
-                            <div
-                                onClick={() => setActiveSection(1)}
-                                onFocus={() => setActiveSection(1)}
-                                className={`transition-all duration-300 bg-white rounded-2xl p-10 border-2 ${activeSection === 1 ? 'border-indigo-600 shadow-xl ring-4 ring-indigo-50' : 'border-slate-200 shadow-sm opacity-60 hover:opacity-100 cursor-pointer'}`}
-                            >
-                                <div className="mb-8 border-b border-slate-100 pb-4">
-                                    <h3 className="text-xl font-bold text-slate-900">1. Define Product Profile</h3>
-                                </div>
-                                <StepOne productCategory={productCategory} setProductCategory={setProductCategory} />
-                            </div>
-
-                            {/* Section 2: Technical Specs */}
-                            <div
-                                onClick={() => setActiveSection(2)}
-                                onFocus={() => setActiveSection(2)}
-                                className={`transition-all duration-300 bg-white rounded-2xl p-10 border-2 ${activeSection === 2 ? 'border-indigo-600 shadow-xl ring-4 ring-indigo-50' : 'border-slate-200 shadow-sm opacity-60 hover:opacity-100 cursor-pointer'}`}
-                            >
-                                <div className="mb-8 border-b border-slate-100 pb-4">
-                                    <h3 className="text-xl font-bold text-slate-900">2. Technical Parameters</h3>
-                                </div>
-                                <StepTwo isAiEnabled={isAiEnabled} setIsAiEnabled={setIsAiEnabled} isLiquid={isLiquid} />
-                            </div>
-
-                            {/* Section 3: Supply Chain */}
-                            <div
-                                onClick={() => setActiveSection(3)}
-                                onFocus={() => setActiveSection(3)}
-                                className={`transition-all duration-300 bg-white rounded-2xl p-10 border-2 ${activeSection === 3 ? 'border-indigo-600 shadow-xl ring-4 ring-indigo-50' : 'border-slate-200 shadow-sm opacity-60 hover:opacity-100 cursor-pointer'}`}
-                            >
-                                <div className="mb-8 border-b border-slate-100 pb-4">
-                                    <h3 className="text-xl font-bold text-slate-900">3. Supply Chain Environment</h3>
-                                </div>
-                                <StepThree />
-                            </div>
-
-                        </div>
-
-                        {/* Navigation Footer - Only Run AI Button remains */}
-                        {/* Navigation Footer */}
-                        <div className="mt-12 flex justify-end">
-                            <button
-                                onClick={handleRunAnalysis}
-                                className="flex items-center px-8 py-4 bg-slate-900 text-white rounded-xl font-bold text-lg hover:bg-slate-800 transition-all shadow-xl shadow-slate-900/20 focus:ring-4 focus:ring-slate-200"
-                            >
-                                Run AI Analysis
-                                <ArrowRight className="w-5 h-5 ml-3 text-emerald-400" />
-                            </button>
-                        </div>
-
-                    </div>
+                <div className="space-y-10 flex-1 relative">
+                    <StepIndicator
+                        num={1} title="Product Profile" desc="Basic food characteristics"
+                        active={activeSection === 1} icon={<Box size={20} />}
+                    />
+                    <StepIndicator
+                        num={2} title="Technical Specs" desc="Moisture, pH & chemistry"
+                        active={activeSection === 2} icon={<TestTubes size={20} />}
+                    />
+                    <StepIndicator
+                        num={3} title="Supply Chain" desc="Storage & transit environment"
+                        active={activeSection === 3} icon={<ThermometerSnowflake size={20} />}
+                    />
                 </div>
 
+                <div className="mt-auto pt-8 border-t border-slate-700/50">
+                    <div className="flex items-center gap-3 text-slate-400 text-sm">
+                        <Bot size={18} className="text-indigo-400" />
+                        <span>AI Engine Status: <span className="text-emerald-400 font-medium">Ready</span></span>
+                    </div>
+                </div>
             </div>
+
+            {/* RIGHT CONTENT - Continuous Scroll Form */}
+            <div className="flex-1 flex flex-col h-full overflow-y-auto scroll-smooth pb-24">
+                <div className="max-w-4xl w-full mx-auto p-8 md:p-12 lg:p-16">
+
+                    <div className="mb-10">
+                        <h2 className="text-3xl font-extrabold text-slate-900">
+                            Configure Packaging Parameters
+                        </h2>
+                        <p className="text-base text-slate-500 mt-2">Provide the details below to generate your FSSAI-compliant material specs.</p>
+                    </div>
+
+                    {/* Form Containers - Stacked Vertically */}
+                    <div className="space-y-8">
+
+                        {/* Section 1: Product Profile */}
+                        <div
+                            onClick={() => setActiveSection(1)}
+                            onFocus={() => setActiveSection(1)}
+                            className={`transition-all duration-300 bg-white rounded-2xl p-10 border-2 ${activeSection === 1 ? 'border-indigo-600 shadow-xl ring-4 ring-indigo-50' : 'border-slate-200 shadow-sm opacity-60 hover:opacity-100 cursor-pointer'}`}
+                        >
+                            <div className="mb-8 border-b border-slate-100 pb-4">
+                                <h3 className="text-xl font-bold text-slate-900">1. Define Product Profile</h3>
+                            </div>
+                            <StepOne productCategory={productCategory} setProductCategory={setProductCategory} />
+                        </div>
+
+                        {/* Section 2: Technical Specs */}
+                        <div
+                            onClick={() => setActiveSection(2)}
+                            onFocus={() => setActiveSection(2)}
+                            className={`transition-all duration-300 bg-white rounded-2xl p-10 border-2 ${activeSection === 2 ? 'border-indigo-600 shadow-xl ring-4 ring-indigo-50' : 'border-slate-200 shadow-sm opacity-60 hover:opacity-100 cursor-pointer'}`}
+                        >
+                            <div className="mb-8 border-b border-slate-100 pb-4">
+                                <h3 className="text-xl font-bold text-slate-900">2. Technical Parameters</h3>
+                            </div>
+                            <StepTwo
+                                isAiEnabled={isAiEnabled} setIsAiEnabled={setIsAiEnabled} isLiquid={isLiquid}
+                                moisture={moisture} setMoisture={setMoisture}
+                                lipid={lipid} setLipid={setLipid}
+                                ph={ph} setPh={setPh}
+                                fillingProcess={fillingProcess} setFillingProcess={setFillingProcess}
+                            />                        </div>
+
+                        {/* Section 3: Supply Chain */}
+                        <div
+                            onClick={() => setActiveSection(3)}
+                            onFocus={() => setActiveSection(3)}
+                            className={`transition-all duration-300 bg-white rounded-2xl p-10 border-2 ${activeSection === 3 ? 'border-indigo-600 shadow-xl ring-4 ring-indigo-50' : 'border-slate-200 shadow-sm opacity-60 hover:opacity-100 cursor-pointer'}`}
+                        >
+                            <div className="mb-8 border-b border-slate-100 pb-4">
+                                <h3 className="text-xl font-bold text-slate-900">3. Supply Chain Environment</h3>
+                            </div>
+                            <StepThree storageTemp={storageTemp} setStorageTemp={setStorageTemp} />
+                        </div>
+
+                    </div>
+
+                    {/* Navigation Footer */}
+                    <div className="mt-12 flex justify-end">
+                        <button
+                            onClick={handleRunAnalysis}
+                            className="flex items-center px-8 py-4 bg-slate-900 text-white rounded-xl font-bold text-lg hover:bg-slate-800 transition-all shadow-xl shadow-slate-900/20 focus:ring-4 focus:ring-slate-200"
+                        >
+                            Run AI Analysis
+                            <ArrowRight className="w-5 h-5 ml-3 text-emerald-400" />
+                        </button>
+                    </div>
+
+                </div>
+            </div>
+
         </div>
-    );
+    </div>
+);
 }
 
 // --- Professional Sub-Components ---
@@ -286,15 +348,12 @@ function StepOne({ productCategory, setProductCategory }) {
         </div>
     );
 }
-
-function StepTwo({ isAiEnabled, setIsAiEnabled, isLiquid }) {
-    // Shared classes for styling enabled vs disabled states
+function StepTwo({ isAiEnabled, setIsAiEnabled, isLiquid, moisture, setMoisture, lipid, setLipid, ph, setPh, fillingProcess, setFillingProcess }) {
     const inputClass = `w-full px-5 py-3.5 border rounded-xl text-base outline-none transition-all ${isAiEnabled ? 'bg-slate-100 border-slate-200 text-slate-500 cursor-not-allowed' : 'bg-slate-50 border-slate-200 focus:ring-2 focus:ring-indigo-500 focus:bg-white text-slate-900'}`;
     const liquidDisabledClass = `w-full px-5 py-3.5 border rounded-xl text-base outline-none transition-all bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed`;
 
     return (
         <div className="space-y-8">
-            {/* AI Toggle Banner */}
             <div className="flex items-center justify-between p-5 bg-indigo-50 border border-indigo-100 rounded-xl">
                 <div className="flex items-center gap-4">
                     <div className="p-2.5 bg-indigo-100 text-indigo-600 rounded-lg"><Bot size={20} /></div>
@@ -303,7 +362,6 @@ function StepTwo({ isAiEnabled, setIsAiEnabled, isLiquid }) {
                         <p className="text-sm text-indigo-700 mt-0.5">Estimating technical values based on standard product categories.</p>
                     </div>
                 </div>
-                {/* Interactive Toggle Button */}
                 <button
                     onClick={() => setIsAiEnabled(!isAiEnabled)}
                     className={`w-14 h-8 rounded-full relative cursor-pointer focus:outline-none transition-colors duration-300 ${isAiEnabled ? 'bg-indigo-600' : 'bg-slate-300'}`}
@@ -313,29 +371,33 @@ function StepTwo({ isAiEnabled, setIsAiEnabled, isLiquid }) {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                {/* Standard Specs */}
                 <div>
                     <label className="block text-sm font-bold text-slate-700 mb-2">Moisture / Water Activity</label>
-                    <input type="number" defaultValue={isAiEnabled ? "3.5" : ""} step="0.1" disabled={isAiEnabled} className={inputClass} placeholder={!isAiEnabled ? "Enter value..." : ""} />
+                    <input
+                        type="number" step="0.1"
+                        value={moisture}
+                        onChange={(e) => setMoisture(e.target.value)}
+                        disabled={isAiEnabled}
+                        className={inputClass}
+                    />
                 </div>
                 <div>
                     <label className="block text-sm font-bold text-slate-700 mb-2">Lipid/Fat Content</label>
-                    <select disabled={isAiEnabled} className={inputClass}>
+                    <select value={lipid} onChange={(e) => setLipid(e.target.value)} disabled={isAiEnabled} className={inputClass}>
                         <option>Low (&lt;5%)</option>
                         <option>Medium (5-20%)</option>
                         <option>High (&gt;20%) - Requires O2 Barrier</option>
                     </select>
                 </div>
 
-                {/* Liquid & Juice Specific Specs */}
                 <div>
                     <label className={`block text-sm font-bold mb-2 ${!isLiquid ? 'text-slate-400' : 'text-slate-700'}`}>
                         pH Level (Acidity)
                     </label>
                     <input
-                        type={!isLiquid ? "text" : "number"}
-                        defaultValue={isAiEnabled && isLiquid ? "3.8" : ""}
-                        step="0.1"
+                        type={!isLiquid ? "text" : "number"} step="0.1"
+                        value={!isLiquid ? "" : ph}
+                        onChange={(e) => setPh(e.target.value)}
                         disabled={!isLiquid || isAiEnabled}
                         placeholder={!isLiquid ? "N/A - Solid product" : "Enter pH..."}
                         className={!isLiquid ? liquidDisabledClass : inputClass}
@@ -345,7 +407,12 @@ function StepTwo({ isAiEnabled, setIsAiEnabled, isLiquid }) {
                     <label className={`block text-sm font-bold mb-2 ${!isLiquid ? 'text-slate-400' : 'text-slate-700'}`}>
                         Filling Process
                     </label>
-                    <select disabled={!isLiquid || isAiEnabled} className={!isLiquid ? liquidDisabledClass : inputClass}>
+                    <select
+                        value={fillingProcess}
+                        onChange={(e) => setFillingProcess(e.target.value)}
+                        disabled={!isLiquid || isAiEnabled}
+                        className={!isLiquid ? liquidDisabledClass : inputClass}
+                    >
                         {!isLiquid ? (
                             <option>N/A - Solid product</option>
                         ) : (
@@ -362,30 +429,53 @@ function StepTwo({ isAiEnabled, setIsAiEnabled, isLiquid }) {
         </div>
     );
 }
-
-function StepThree() {
+function StepThree({ storageTemp, setStorageTemp }) {
     return (
         <div className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
 
-                {/* Interactive Radio Card 1 */}
-                <label className="relative flex flex-col p-6 border-2 border-indigo-600 bg-indigo-50/50 rounded-xl cursor-pointer">
-                    <input type="radio" name="storage" className="absolute opacity-0" defaultChecked />
+                {/* Interactive Radio Card 1 - Ambient */}
+                <label
+                    onClick={() => setStorageTemp("Ambient")}
+                    className={`relative flex flex-col p-6 border-2 rounded-xl cursor-pointer transition-colors ${storageTemp === "Ambient"
+                        ? "border-indigo-600 bg-indigo-50/50"
+                        : "border-slate-200 bg-white hover:border-slate-300"
+                        }`}
+                >
+                    <input type="radio" name="storage" className="absolute opacity-0" checked={storageTemp === "Ambient"} readOnly />
                     <div className="flex justify-between items-start mb-4">
-                        <span className="text-base font-bold text-indigo-900">Ambient Storage</span>
-                        <CheckCircle2 className="text-indigo-600 w-6 h-6" />
+                        <span className={`text-base font-bold ${storageTemp === "Ambient" ? "text-indigo-900" : "text-slate-900"}`}>Ambient Storage</span>
+                        {storageTemp === "Ambient" ? (
+                            <CheckCircle2 className="text-indigo-600 w-6 h-6" />
+                        ) : (
+                            <div className="w-6 h-6 border-2 border-slate-300 rounded-full" />
+                        )}
                     </div>
-                    <p className="text-sm text-indigo-700/80 leading-relaxed">Standard warehouse and retail shelving. Temperatures fluctuating between 20°C and 35°C.</p>
+                    <p className={`text-sm leading-relaxed ${storageTemp === "Ambient" ? "text-indigo-700/80" : "text-slate-500"}`}>
+                        Standard warehouse and retail shelving. Temperatures fluctuating between 20°C and 35°C.
+                    </p>
                 </label>
 
-                {/* Interactive Radio Card 2 */}
-                <label className="relative flex flex-col p-6 border-2 border-slate-200 bg-white hover:border-slate-300 rounded-xl cursor-pointer transition-colors">
-                    <input type="radio" name="storage" className="absolute opacity-0" />
+                {/* Interactive Radio Card 2 - Cold Chain */}
+                <label
+                    onClick={() => setStorageTemp("Cold Chain")}
+                    className={`relative flex flex-col p-6 border-2 rounded-xl cursor-pointer transition-colors ${storageTemp === "Cold Chain"
+                        ? "border-indigo-600 bg-indigo-50/50"
+                        : "border-slate-200 bg-white hover:border-slate-300"
+                        }`}
+                >
+                    <input type="radio" name="storage" className="absolute opacity-0" checked={storageTemp === "Cold Chain"} readOnly />
                     <div className="flex justify-between items-start mb-4">
-                        <span className="text-base font-bold text-slate-900">Cold Chain (Chilled)</span>
-                        <div className="w-6 h-6 border-2 border-slate-300 rounded-full" />
+                        <span className={`text-base font-bold ${storageTemp === "Cold Chain" ? "text-indigo-900" : "text-slate-900"}`}>Cold Chain (Chilled)</span>
+                        {storageTemp === "Cold Chain" ? (
+                            <CheckCircle2 className="text-indigo-600 w-6 h-6" />
+                        ) : (
+                            <div className="w-6 h-6 border-2 border-slate-300 rounded-full" />
+                        )}
                     </div>
-                    <p className="text-sm text-slate-500 leading-relaxed">Strictly refrigerated logistics network. Maintained consistently between 2°C and 8°C.</p>
+                    <p className={`text-sm leading-relaxed ${storageTemp === "Cold Chain" ? "text-indigo-700/80" : "text-slate-500"}`}>
+                        Strictly refrigerated logistics network. Maintained consistently between 2°C and 8°C.
+                    </p>
                 </label>
 
             </div>

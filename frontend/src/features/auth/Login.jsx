@@ -1,162 +1,124 @@
 import React, { useState } from 'react';
-import { Package, Leaf, Factory, AlertCircle, Eye, EyeOff } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { Lock, Mail, ArrowRight, UserPlus, LogIn } from 'lucide-react';
 
 export default function Login() {
-    const [role, setRole] = useState('producer');
+    const [isLogin, setIsLogin] = useState(true);
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
-
-    // New state for toggling password visibility
-    const [showPassword, setShowPassword] = useState(false);
-
     const navigate = useNavigate();
 
-    // Function to show password for 3 seconds
-    const handleShowPassword = () => {
-        setShowPassword(true);
-        setTimeout(() => {
-            setShowPassword(false);
-        }, 3000);
-    };
-
-    const handleLogin = (e) => {
+    const handleSubmit = async (e) => {
         e.preventDefault();
         setError('');
 
-        if (!email.trim() || !password.trim()) {
-            setError('Please enter both email and password.');
-            return;
-        }
+        const endpoint = isLogin ? '/api/login' : '/api/signup';
 
-        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-        if (!emailRegex.test(email)) {
-            setError('Please enter a valid email address (e.g., name@company.com).');
-            return;
-        }
+        try {
+            // OAuth2 requires form data for login, but our signup takes JSON
+            let bodyData;
+            let headers = {};
 
-        if (password.length < 6) {
-            setError('Password must be at least 6 characters long.');
-            return;
-        }
+            if (isLogin) {
+                bodyData = new URLSearchParams();
+                bodyData.append('username', email);
+                bodyData.append('password', password);
+                headers = { 'Content-Type': 'application/x-www-form-urlencoded' };
+            } else {
+                bodyData = JSON.stringify({ email, password });
+                headers = { 'Content-Type': 'application/json' };
+            }
 
-        if (email === 'admin@packgenius.com' && password === 'password123') {
-            navigate('/wizard');
-        } else {
-            setError('Invalid credentials. (Hint: use admin@packgenius.com / password123)');
+            const response = await fetch(`http://127.0.0.1:8000${endpoint}`, {
+                method: 'POST',
+                headers: headers,
+                body: bodyData
+            });
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(data.detail || "Authentication failed");
+            }
+
+            if (isLogin) {
+                // Save the VIP pass and go to the dashboard!
+                localStorage.setItem('access_token', data.access_token);
+                navigate('/'); // Or wherever your InputWizard lives
+            } else {
+                // Signup successful, switch to login mode
+                alert("Account created! Please log in.");
+                setIsLogin(true);
+            }
+        } catch (err) {
+            setError(err.message);
         }
     };
 
     return (
-        <div className="min-h-screen flex items-center justify-center p-4">
-            <div className="max-w-md w-full bg-white rounded-xl shadow-lg p-8">
-
-                {/* Header */}
+        <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+            <div className="max-w-md w-full bg-white rounded-2xl shadow-xl p-8 border border-slate-100">
                 <div className="text-center mb-8">
-                    <div className="inline-flex items-center justify-center w-12 h-12 bg-indigo-100 rounded-full mb-4">
-                        <Package className="text-indigo-600 w-6 h-6" />
+                    <div className="w-16 h-16 bg-indigo-600 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg">
+                        <Lock className="w-8 h-8 text-white" />
                     </div>
-                    <h2 className="text-2xl font-bold text-slate-900">Welcome Back</h2>
-                    <p className="text-slate-500 mt-2">Sign in to your packaging dashboard</p>
+                    <h2 className="text-2xl font-bold text-slate-900">
+                        {isLogin ? 'Welcome Back' : 'Create Account'}
+                    </h2>
+                    <p className="text-slate-500 mt-2">
+                        {isLogin ? 'Enter your details to access PackGenius AI.' : 'Sign up to start analyzing packaging.'}
+                    </p>
                 </div>
 
-                {/* Role Selection */}
-                <div className="flex gap-4 mb-8">
-                    <button
-                        type="button"
-                        onClick={() => setRole('producer')}
-                        className={`flex-1 flex flex-col items-center p-4 border rounded-lg transition-colors ${role === 'producer' ? 'border-indigo-500 bg-indigo-50 text-indigo-700' : 'border-slate-200 text-slate-500 hover:border-indigo-200'}`}
-                    >
-                        <Leaf className="mb-2 w-6 h-6" />
-                        <span className="text-sm font-medium">Food Producer</span>
-                    </button>
-                    <button
-                        type="button"
-                        onClick={() => setRole('vendor')}
-                        className={`flex-1 flex flex-col items-center p-4 border rounded-lg transition-colors ${role === 'vendor' ? 'border-emerald-500 bg-emerald-50 text-emerald-700' : 'border-slate-200 text-slate-500 hover:border-emerald-200'}`}
-                    >
-                        <Factory className="mb-2 w-6 h-6" />
-                        <span className="text-sm font-medium">Packaging Vendor</span>
-                    </button>
-                </div>
-
-                {/* Form */}
-                <form className="space-y-4" onSubmit={handleLogin}>
-
-                    {/* Error Message Display */}
-                    {error && (
-                        <div className="flex items-center gap-2 p-3 bg-red-50 text-red-700 border border-red-200 rounded-lg text-sm">
-                            <AlertCircle className="w-4 h-4 shrink-0" />
-                            <p>{error}</p>
-                        </div>
-                    )}
-
-                    <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-1">Email</label>
-                        <input
-                            type="text"
-                            value={email}
-                            onChange={(e) => setEmail(e.target.value)}
-                            className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
-                            placeholder="admin@packgenius.com"
-                        />
+                {error && (
+                    <div className="mb-6 p-4 bg-red-50 border border-red-200 text-red-600 rounded-xl text-sm text-center font-medium">
+                        {error}
                     </div>
+                )}
 
+                <form onSubmit={handleSubmit} className="space-y-5">
                     <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-1">Password</label>
+                        <label className="block text-sm font-bold text-slate-700 mb-2">Email Address</label>
                         <div className="relative">
+                            <Mail className="w-5 h-5 text-slate-400 absolute left-4 top-3.5" />
                             <input
-                                type={showPassword ? "text" : "password"}
-                                value={password}
-                                onChange={(e) => setPassword(e.target.value)}
-                                className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none pr-10"
+                                type="email" required
+                                value={email} onChange={(e) => setEmail(e.target.value)}
+                                className="w-full pl-11 pr-4 py-3.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none"
+                                placeholder="engineer@company.com"
+                            />
+                        </div>
+                    </div>
+
+                    <div>
+                        <label className="block text-sm font-bold text-slate-700 mb-2">Password</label>
+                        <div className="relative">
+                            <Lock className="w-5 h-5 text-slate-400 absolute left-4 top-3.5" />
+                            <input
+                                type="password" required
+                                value={password} onChange={(e) => setPassword(e.target.value)}
+                                className="w-full pl-11 pr-4 py-3.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none"
                                 placeholder="••••••••"
                             />
-                            <button
-                                type="button"
-                                onClick={handleShowPassword}
-                                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-slate-400 hover:text-indigo-600 focus:outline-none transition-colors"
-                                title="Show password for 3 seconds"
-                            >
-                                {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-                            </button>
                         </div>
                     </div>
 
-                    <div className="flex items-center justify-between">
-                        <label className="flex items-center">
-                            <input type="checkbox" className="w-4 h-4 text-indigo-600 border-slate-300 rounded focus:ring-indigo-500" />
-                            <span className="ml-2 text-sm text-slate-600">Remember me</span>
-                        </label>
-                        <a href="#" className="text-sm font-medium text-indigo-600 hover:text-indigo-500">Forgot password?</a>
-                    </div>
-
-                    <button type="submit" className="w-full bg-slate-900 text-white font-medium py-2.5 rounded-lg hover:bg-slate-800 transition-colors">
-                        Sign In
+                    <button type="submit" className="w-full py-4 bg-slate-900 text-white rounded-xl font-bold text-lg hover:bg-slate-800 transition-all flex items-center justify-center gap-2 mt-4">
+                        {isLogin ? <LogIn className="w-5 h-5" /> : <UserPlus className="w-5 h-5" />}
+                        {isLogin ? 'Sign In' : 'Sign Up'}
                     </button>
                 </form>
 
-                {/* SSO */}
-                <div className="mt-8">
-                    <div className="relative">
-                        <div className="absolute inset-0 flex items-center">
-                            <div className="w-full border-t border-slate-200"></div>
-                        </div>
-                        <div className="relative flex justify-center text-sm">
-                            <span className="px-2 bg-white text-slate-500">Or continue with</span>
-                        </div>
-                    </div>
-                    <div className="mt-6 flex gap-4">
-                        <button type="button" className="flex-1 flex justify-center py-2.5 border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors font-medium text-slate-700">
-                            Google
-                        </button>
-                        <button type="button" className="flex-1 flex justify-center py-2.5 border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors font-medium text-slate-700">
-                            LinkedIn
-                        </button>
-                    </div>
+                <div className="mt-8 text-center">
+                    <button
+                        onClick={() => setIsLogin(!isLogin)}
+                        className="text-indigo-600 font-semibold hover:text-indigo-800 transition-colors flex items-center justify-center gap-1 mx-auto"
+                    >
+                        {isLogin ? "Need an account? Sign up" : "Already have an account? Log in"}
+                        <ArrowRight className="w-4 h-4" />
+                    </button>
                 </div>
-
             </div>
         </div>
     );

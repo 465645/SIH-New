@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
     Leaf, PackageSearch, Activity, IndianRupee, ShieldCheck,
-    Settings2, Download, ShoppingCart, ArrowLeft, Lock
+    Settings2, Download, ShoppingCart, ArrowLeft, Lock, RefreshCw
 } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import Navbar from '../../components/Navbar';
@@ -10,18 +10,56 @@ export default function ResultsDashboard() {
     const navigate = useNavigate();
     const location = useLocation();
 
-    // Extract the live data from our Python FastAPI backend (with a fallback just in case)
-    const apiData = location.state?.apiData || {
+    // 1. Change apiData to a state variable so it can update dynamically
+    const [apiData, setApiData] = useState(location.state?.apiData || {
         optimal_material: "Standard Multi-layer Pouch",
         estimated_cost_per_unit: 1.50,
         epr_green_score: 50,
         barrier_requirement: "Medium",
         map_gas: "None"
-    };
+    });
 
     const [shelfLife, setShelfLife] = useState(90);
     const [weight, setWeight] = useState(250);
     const [hasZipLock, setHasZipLock] = useState(false);
+    const [isSimulating, setIsSimulating] = useState(false);
+
+    // 2. Add this effect to recalculate ML predictions when shelf life changes
+    useEffect(() => {
+        const fetchSimulation = async () => {
+            setIsSimulating(true);
+            try {
+                const response = await fetch('http://127.0.0.1:8000/api/analyze', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        product_name: "Simulated Product",
+                        fssai_category: "Beverages", // Defaulting to generic for simulation
+                        shelf_life_days: shelfLife,
+                        is_liquid: true,
+                        moisture_content: 10.0,
+                        lipid_content: "Low",
+                        ph_level: 7.0,
+                        filling_process: "None"
+                    })
+                });
+                const result = await response.json();
+                if (result.status === "success") {
+                    setApiData(result.data);
+                }
+            } catch (error) {
+                console.error("Simulation failed:", error);
+            }
+            setIsSimulating(false);
+        };
+
+        // Debounce: Wait 500ms after the user stops sliding before making the API call
+        const timer = setTimeout(() => {
+            fetchSimulation();
+        }, 500);
+
+        return () => clearTimeout(timer);
+    }, [shelfLife]);
 
     // Estimate Standard Dimensions based on weight
     const getStandardDimensions = (w) => {
@@ -30,10 +68,11 @@ export default function ResultsDashboard() {
         return "200mm × 350mm";
     };
 
-    // Calculate final dynamic cost using the base cost from the Python backend
     const weightMultiplier = weight / 250;
     const zipLockCost = hasZipLock ? 1.50 : 0;
     const finalCost = (apiData.estimated_cost_per_unit * weightMultiplier) + zipLockCost;
+
+    // ... (Keep the rest of your return statement exactly the same, but you can add this loading indicator near the Material Header)
 
     return (
         <div className="min-h-screen bg-slate-50 font-sans flex flex-col">
