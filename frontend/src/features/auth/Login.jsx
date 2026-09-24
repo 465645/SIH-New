@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Lock, Mail, ArrowRight, UserPlus, LogIn } from 'lucide-react';
+import { Lock, Mail, ArrowRight, UserPlus, LogIn, Building2 } from 'lucide-react';
 
 export default function Login() {
     const [isLogin, setIsLogin] = useState(true);
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
+    const [role, setRole] = useState('buyer');
+    const [companyName, setCompanyName] = useState('');
     const [error, setError] = useState('');
     const navigate = useNavigate();
 
@@ -26,7 +28,7 @@ export default function Login() {
                 bodyData.append('password', password);
                 headers = { 'Content-Type': 'application/x-www-form-urlencoded' };
             } else {
-                bodyData = JSON.stringify({ email, password });
+                bodyData = JSON.stringify({ email, password, role, company_name: companyName });
                 headers = { 'Content-Type': 'application/json' };
             }
 
@@ -103,6 +105,46 @@ export default function Login() {
                             />
                         </div>
                     </div>
+
+                    {!isLogin && (
+                        <>
+                            <div>
+                                <label className="block text-sm font-bold text-slate-700 mb-2">Company Name</label>
+                                <div className="relative">
+                                    <Building2 className="w-5 h-5 text-slate-400 absolute left-4 top-3.5" />
+                                    <input
+                                        type="text"
+                                        value={companyName} onChange={(e) => setCompanyName(e.target.value)}
+                                        className="w-full pl-11 pr-4 py-3.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none"
+                                        placeholder="Your Foods Pvt Ltd"
+                                    />
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-bold text-slate-700 mb-2">I am a</label>
+                                <div className="grid grid-cols-2 gap-3">
+                                    {[
+                                        { id: 'buyer', title: 'Food Producer', desc: 'Analyse and source packaging' },
+                                        { id: 'supplier', title: 'Packaging Supplier', desc: 'List inventory, quote RFQs' },
+                                    ].map((opt) => (
+                                        <button
+                                            type="button" key={opt.id}
+                                            onClick={() => setRole(opt.id)}
+                                            className={`text-left p-4 rounded-xl border-2 transition-colors ${role === opt.id
+                                                ? 'border-indigo-600 bg-indigo-50/60'
+                                                : 'border-slate-200 bg-white hover:border-slate-300'}`}
+                                        >
+                                            <span className={`block text-sm font-bold ${role === opt.id ? 'text-indigo-900' : 'text-slate-900'}`}>
+                                                {opt.title}
+                                            </span>
+                                            <span className="block text-xs text-slate-500 mt-1 leading-snug">{opt.desc}</span>
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        </>
+                    )}
 
                     <button type="submit" className="w-full py-4 bg-slate-900 text-white rounded-xl font-bold text-lg hover:bg-slate-800 transition-all flex items-center justify-center gap-2 mt-4">
                         {isLogin ? <LogIn className="w-5 h-5" /> : <UserPlus className="w-5 h-5" />}

@@ -15,6 +15,14 @@ export default function InputWizard() {
     const [productCategory, setProductCategory] = useState("");
     const [isAiEnabled, setIsAiEnabled] = useState(true);
     const [storageTemp, setStorageTemp] = useState("Ambient");
+    const [shelfLifeDays, setShelfLifeDays] = useState(180);
+    const [productName, setProductName] = useState("");
+
+    // Step 3 - supply chain environment
+    const [relativeHumidity, setRelativeHumidity] = useState(65);
+    const [transitCondition, setTransitCondition] = useState("Standard Road");
+    const [isFreshProduce, setIsFreshProduce] = useState(false);
+    const [respirationRate, setRespirationRate] = useState("");
 
     // Logic to determine if the selected category is typically a liquid
     const isLiquid = productCategory.toLowerCase().includes("beverage") ||
@@ -59,22 +67,33 @@ export default function InputWizard() {
         }
 
         try {
+            const payload = {
+                product_name: productName || productCategory || "Unnamed Product",
+                fssai_category: productCategory || "Unknown",
+                shelf_life_days: Number(shelfLifeDays) || 90,
+                is_liquid: isLiquid,
+                moisture_content: Number(moisture),
+                lipid_content: lipid.split(" ")[0],
+                ph_level: isLiquid ? Number(ph) : null,
+                filling_process: isLiquid ? fillingProcess : "None",
+
+                // Step 3 - storage and supply chain
+                storage_type: storageTemp,
+                relative_humidity: Number(relativeHumidity),
+                transit_condition: transitCondition,
+
+                // Fresh produce respiration
+                is_fresh_produce: isFreshProduce,
+                respiration_rate: respirationRate === "" ? null : Number(respirationRate)
+            };
+
             const response = await fetch('http://127.0.0.1:8000/api/analyze', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${token}` // 2. Send the VIP pass!
                 },
-                body: JSON.stringify({
-                    product_name: "User Product",
-                    fssai_category: productCategory || "Unknown",
-                    shelf_life_days: 90,
-                    is_liquid: isLiquid,
-                    moisture_content: Number(moisture),
-                    lipid_content: lipid.split(" ")[0],
-                    ph_level: isLiquid ? Number(ph) : null,
-                    filling_process: isLiquid ? fillingProcess : "None"
-                })
+                body: JSON.stringify(payload)
             });
 
             if (response.status === 401) {
@@ -87,24 +106,20 @@ export default function InputWizard() {
             const result = await response.json();
 
             if (result.status === "success") {
-                navigate('/results', { state: { apiData: result.data } });
+                navigate('/results', {
+                    state: {
+                        apiData: result.data,
+                        request: payload,
+                        why: result.why,
+                        mapDesign: result.map_design,
+                        alternatives: result.alternatives,
+                    }
+                });
             }
         } catch (error) {
             console.error("Failed to connect to AI Engine:", error);
             alert("Ensure your FastAPI server is running on port 8000!");
         }
-    };
-
-    const result = await response.json();
-
-    // Navigate to the results page and pass the API data along
-    if (result.status === "success") {
-        navigate('/results', { state: { apiData: result.data } });
-    }
-} catch (error) {
-    console.error("Failed to connect to AI Engine:", error);
-    alert("Ensure your FastAPI server is running on port 8000!");
-}
     };
 
 return (
@@ -169,7 +184,11 @@ return (
                             <div className="mb-8 border-b border-slate-100 pb-4">
                                 <h3 className="text-xl font-bold text-slate-900">1. Define Product Profile</h3>
                             </div>
-                            <StepOne productCategory={productCategory} setProductCategory={setProductCategory} />
+                            <StepOne
+                                productCategory={productCategory} setProductCategory={setProductCategory}
+                                shelfLifeDays={shelfLifeDays} setShelfLifeDays={setShelfLifeDays}
+                                productName={productName} setProductName={setProductName}
+                            />
                         </div>
 
                         {/* Section 2: Technical Specs */}
@@ -198,7 +217,13 @@ return (
                             <div className="mb-8 border-b border-slate-100 pb-4">
                                 <h3 className="text-xl font-bold text-slate-900">3. Supply Chain Environment</h3>
                             </div>
-                            <StepThree storageTemp={storageTemp} setStorageTemp={setStorageTemp} />
+                            <StepThree
+                                storageTemp={storageTemp} setStorageTemp={setStorageTemp}
+                                relativeHumidity={relativeHumidity} setRelativeHumidity={setRelativeHumidity}
+                                transitCondition={transitCondition} setTransitCondition={setTransitCondition}
+                                isFreshProduce={isFreshProduce} setIsFreshProduce={setIsFreshProduce}
+                                respirationRate={respirationRate} setRespirationRate={setRespirationRate}
+                            />
                         </div>
 
                     </div>
@@ -240,7 +265,7 @@ function StepIndicator({ num, title, desc, active, icon }) {
         </div>
     );
 }
-function StepOne({ productCategory, setProductCategory }) {
+function StepOne({ productCategory, setProductCategory, shelfLifeDays, setShelfLifeDays, productName, setProductName }) {
     const [searchQuery, setSearchQuery] = useState(productCategory || "");
     const [isDropdownOpen, setIsDropdownOpen] = useState(false);
 
@@ -273,7 +298,13 @@ function StepOne({ productCategory, setProductCategory }) {
                 <div>
                     <label className="block text-sm font-bold text-slate-700 mb-2">Product Name</label>
                     <input type="text" placeholder="e.g., Premium Cold-Pressed Apple Juice"
+                        value={productName}
+                        onChange={(e) => setProductName(e.target.value)}
                         className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-xl text-base focus:ring-2 focus:ring-indigo-500 focus:bg-white outline-none transition-all placeholder:text-slate-400" />
+                    <p className="text-xs text-slate-500 mt-2">
+                        For fresh produce, name the commodity (for example "broccoli" or "mango") so
+                        published respiration data can be matched.
+                    </p>
                 </div>
 
                 {/* Searchable Custom Dropdown */}
@@ -341,7 +372,11 @@ function StepOne({ productCategory, setProductCategory }) {
             <div>
                 <label className="block text-sm font-bold text-slate-700 mb-2">Target Shelf Life Requirement</label>
                 <div className="flex items-center gap-3">
-                    <input type="number" placeholder="180" className="w-40 px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-xl text-base focus:ring-2 focus:ring-indigo-500 focus:bg-white outline-none transition-all" />
+                    <input
+                        type="number" placeholder="180" min="1" max="730"
+                        value={shelfLifeDays}
+                        onChange={(e) => setShelfLifeDays(e.target.value)}
+                        className="w-40 px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-xl text-base focus:ring-2 focus:ring-indigo-500 focus:bg-white outline-none transition-all" />
                     <span className="text-base font-semibold text-slate-500">Days</span>
                 </div>
             </div>
@@ -429,7 +464,13 @@ function StepTwo({ isAiEnabled, setIsAiEnabled, isLiquid, moisture, setMoisture,
         </div>
     );
 }
-function StepThree({ storageTemp, setStorageTemp }) {
+function StepThree({
+    storageTemp, setStorageTemp,
+    relativeHumidity, setRelativeHumidity,
+    transitCondition, setTransitCondition,
+    isFreshProduce, setIsFreshProduce,
+    respirationRate, setRespirationRate,
+}) {
     return (
         <div className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -478,6 +519,112 @@ function StepThree({ storageTemp, setStorageTemp }) {
                     </p>
                 </label>
 
+                {/* Radio Card 3 - Frozen */}
+                <label
+                    onClick={() => setStorageTemp("Frozen")}
+                    className={`relative flex flex-col p-6 border-2 rounded-xl cursor-pointer transition-colors ${storageTemp === "Frozen"
+                        ? "border-indigo-600 bg-indigo-50/50"
+                        : "border-slate-200 bg-white hover:border-slate-300"
+                        }`}
+                >
+                    <input type="radio" name="storage" className="absolute opacity-0" checked={storageTemp === "Frozen"} readOnly />
+                    <div className="flex justify-between items-start mb-4">
+                        <span className={`text-base font-bold ${storageTemp === "Frozen" ? "text-indigo-900" : "text-slate-900"}`}>Frozen</span>
+                        {storageTemp === "Frozen" ? (
+                            <CheckCircle2 className="text-indigo-600 w-6 h-6" />
+                        ) : (
+                            <div className="w-6 h-6 border-2 border-slate-300 rounded-full" />
+                        )}
+                    </div>
+                    <p className={`text-sm leading-relaxed ${storageTemp === "Frozen" ? "text-indigo-700/80" : "text-slate-500"}`}>
+                        Deep freeze at -18°C or below. Film must stay flexible and pinhole-free when brittle.
+                    </p>
+                </label>
+
+            </div>
+
+            {/* Relative humidity */}
+            <div className="bg-slate-50 border border-slate-200 rounded-xl p-6">
+                <div className="flex items-center justify-between mb-3">
+                    <label className="block text-sm font-bold text-slate-700">
+                        Storage Relative Humidity
+                    </label>
+                    <span className="text-base font-bold text-indigo-700">{relativeHumidity}% RH</span>
+                </div>
+                <input
+                    type="range" min="20" max="100" step="5"
+                    value={relativeHumidity}
+                    onChange={(e) => setRelativeHumidity(Number(e.target.value))}
+                    className="w-full h-2.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-indigo-600"
+                />
+                <div className="flex justify-between text-xs font-semibold text-slate-400 mt-2">
+                    <span>20% (Arid)</span>
+                    <span>60% (Typical)</span>
+                    <span>100% (Monsoon)</span>
+                </div>
+                <p className="text-xs text-slate-500 mt-3 leading-relaxed">
+                    A humid warehouse steepens the moisture gradient across the film, which tightens
+                    the required water vapour barrier for dry products.
+                </p>
+            </div>
+
+            {/* Transit conditions */}
+            <div>
+                <label className="block text-sm font-bold text-slate-700 mb-2">Transit Conditions</label>
+                <select
+                    value={transitCondition}
+                    onChange={(e) => setTransitCondition(e.target.value)}
+                    className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-xl text-base focus:ring-2 focus:ring-indigo-500 focus:bg-white outline-none transition-all"
+                >
+                    <option>Standard Road</option>
+                    <option>Rough / Rural Road</option>
+                    <option>Long Haul / Export</option>
+                </select>
+                <p className="text-xs text-slate-500 mt-2">
+                    Vibration, stacking load and flex-cracking risk set the minimum gauge and tensile strength.
+                </p>
+            </div>
+
+            {/* Fresh produce / respiration */}
+            <div className={`rounded-xl border-2 p-6 transition-colors ${isFreshProduce ? 'border-emerald-500 bg-emerald-50/40' : 'border-slate-200 bg-white'}`}>
+                <label className="flex items-start gap-4 cursor-pointer">
+                    <input
+                        type="checkbox"
+                        checked={isFreshProduce}
+                        onChange={(e) => setIsFreshProduce(e.target.checked)}
+                        className="mt-1 w-5 h-5 text-emerald-600 border-slate-300 rounded focus:ring-emerald-500 cursor-pointer"
+                    />
+                    <div>
+                        <span className="text-base font-bold text-slate-900">
+                            This is fresh produce (still respiring)
+                        </span>
+                        <p className="text-sm text-slate-500 mt-1 leading-relaxed">
+                            Fruit and vegetables keep consuming oxygen after harvest. A high-barrier film
+                            would suffocate them and cause off-flavours, so the recommendation switches to
+                            breathable or micro-perforated film with a modified atmosphere.
+                        </p>
+                    </div>
+                </label>
+
+                {isFreshProduce && (
+                    <div className="mt-5 pl-9">
+                        <label className="block text-sm font-bold text-slate-700 mb-2">
+                            Measured Respiration Rate <span className="font-medium text-slate-400">(optional)</span>
+                        </label>
+                        <div className="flex items-center gap-3">
+                            <input
+                                type="number" min="0" step="0.1" placeholder="e.g. 45"
+                                value={respirationRate}
+                                onChange={(e) => setRespirationRate(e.target.value)}
+                                className="w-40 px-5 py-3 bg-white border border-slate-300 rounded-xl text-base focus:ring-2 focus:ring-emerald-500 outline-none"
+                            />
+                            <span className="text-sm font-semibold text-slate-500">mg CO&#8322; / kg / h at 5&#176;C</span>
+                        </div>
+                        <p className="text-xs text-slate-500 mt-2">
+                            Leave blank to use the published rate for this commodity.
+                        </p>
+                    </div>
+                )}
             </div>
         </div>
     );

@@ -1,25 +1,43 @@
+import os
 import jwt
 from datetime import datetime, timedelta
-from passlib.context import CryptContext
+from dotenv import load_dotenv
+import bcrypt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 import models
 from database import get_db
 
-# Security Configuration
-SECRET_KEY = "packgenius_super_secret_key" # In production, this goes in a .env file
-ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 1440 # 24 hours
+load_dotenv()
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+# Security Configuration
+SECRET_KEY = os.getenv("SECRET_KEY")
+if not SECRET_KEY:
+    raise RuntimeError(
+        "SECRET_KEY is not set. Copy backend/.env.example to backend/.env and set a value."
+    )
+ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
+ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "1440")) # 24 hours
+
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/login")
 
+# bcrypt operates on at most 72 bytes; anything beyond that is silently ignored
+# by the algorithm, so truncate explicitly rather than letting it raise.
+BCRYPT_MAX_BYTES = 72
+
+def _to_bytes(password: str) -> bytes:
+    return password.encode("utf-8")[:BCRYPT_MAX_BYTES]
+
 def verify_password(plain_password, hashed_password):
-    return pwd_context.verify(plain_password, hashed_password)
+    try:
+        return bcrypt.checkpw(_to_bytes(plain_password), hashed_password.encode("utf-8"))
+    except ValueError:
+        # Malformed hash stored in the database
+        return False
 
 def get_password_hash(password):
-    return pwd_context.hash(password)
+    return bcrypt.hashpw(_to_bytes(password), bcrypt.gensalt()).decode("utf-8")
 
 def create_access_token(data: dict):
     to_encode = data.copy()

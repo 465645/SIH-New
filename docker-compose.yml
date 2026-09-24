@@ -1,0 +1,53 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: packgenius-db
+    environment:
+      POSTGRES_USER: packgenius
+      POSTGRES_PASSWORD: packgenius
+      POSTGRES_DB: packgenius
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U packgenius -d packgenius"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: packgenius-api
+    environment:
+      # Point SQLAlchemy at Postgres instead of the default local SQLite file
+      DATABASE_URL: postgresql+psycopg2://packgenius:packgenius@db:5432/packgenius
+      # Override in a .env file or your shell before any real deployment
+      SECRET_KEY: ${SECRET_KEY:-dev-only-change-me}
+      JWT_ALGORITHM: HS256
+      ACCESS_TOKEN_EXPIRE_MINUTES: "1440"
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      # The trained model artefacts live beside the code
+      - ./backend:/app
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: packgenius-web
+    environment:
+      VITE_API_BASE: http://localhost:8000
+    ports:
+      - "5173:5173"
+    depends_on:
+      - backend
+
+volumes:
+  pgdata:

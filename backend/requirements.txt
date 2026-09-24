@@ -1,0 +1,21 @@
+fastapi
+uvicorn[standard]
+sqlalchemy
+pydantic
+python-multipart
+bcrypt
+PyJWT
+joblib
+pandas
+numpy
+scikit-learn
+python-dotenv
+
+# Module 3 - compliance, nutrition, traceability
+qrcode
+Pillow
+pytesseract        # OCR also needs the Tesseract binary installed separately
+
+# Module 5 - die-line PDF output
+reportlab
+psycopg2-binary    # only needed when DATABASE_URL points at PostgreSQL
